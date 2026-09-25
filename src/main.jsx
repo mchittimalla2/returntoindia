@@ -19,7 +19,8 @@ const seed = {
     { id: crypto.randomUUID(), name: "Interiors", target: 0 },
     { id: crypto.randomUUID(), name: "Gold", target: 0 }
   ],
-  entries: []
+  entries: [],
+  existingAssets: []
 };
 
 function loadPlan() {
@@ -49,6 +50,14 @@ function monthDiff(fromStr, toDate) {
 function App() {
   const [plan, setPlan] = useState(loadPlan);
   const [saveStatus, setSaveStatus] = useState("Loading local file...");
+  const [assetDraft, setAssetDraft] = useState({
+    name: "Robinhood",
+    goalId: "",
+    currency: "USD",
+    investedAmount: "",
+    currentValue: "",
+    note: ""
+  });
   const loadedRef = useRef(false);
   const [draft, setDraft] = useState({
     month: new Date().toISOString().slice(0, 7),
@@ -99,6 +108,8 @@ function App() {
       .catch(() => setSaveStatus("JSON save failed — browser fallback still saved"));
   };
 
+  const existingAssets = plan.existingAssets || [];
+
   const totalTarget = useMemo(
     () => plan.goals.reduce((sum, goal) => sum + Number(goal.target || 0), 0),
     [plan.goals]
@@ -106,6 +117,12 @@ function App() {
 
   const achievedByGoal = useMemo(() => {
     const map = {};
+    for (const asset of existingAssets) {
+      const inr = asset.currency === "USD"
+        ? Number(asset.currentValue || 0) * Number(plan.usdInr || 0)
+        : Number(asset.currentValue || 0);
+      map[asset.goalId] = (map[asset.goalId] || 0) + inr;
+    }
     for (const entry of plan.entries) {
       const inr = entry.currency === "USD"
         ? Number(entry.amount || 0) * Number(plan.usdInr || 0)
@@ -113,7 +130,7 @@ function App() {
       map[entry.goalId] = (map[entry.goalId] || 0) + inr;
     }
     return map;
-  }, [plan.entries, plan.usdInr]);
+  }, [plan.entries, existingAssets, plan.usdInr]);
 
   const totalAchieved = Object.values(achievedByGoal).reduce((a, b) => a + b, 0);
   const remaining = Math.max(0, totalTarget - totalAchieved);
@@ -178,8 +195,27 @@ function App() {
     persist({
       ...plan,
       goals: plan.goals.filter((goal) => goal.id !== id),
-      entries: plan.entries.filter((entry) => entry.goalId !== id)
+      entries: plan.entries.filter((entry) => entry.goalId !== id),
+      existingAssets: existingAssets.filter((asset) => asset.goalId !== id)
     });
+  };
+
+  const addExistingAsset = (event) => {
+    event.preventDefault();
+    if (!assetDraft.goalId || !assetDraft.currentValue || Number(assetDraft.currentValue) < 0) return;
+    persist({
+      ...plan,
+      existingAssets: [
+        ...existingAssets,
+        {
+          ...assetDraft,
+          id: crypto.randomUUID(),
+          investedAmount: Number(assetDraft.investedAmount || 0),
+          currentValue: Number(assetDraft.currentValue)
+        }
+      ]
+    });
+    setAssetDraft({ ...assetDraft, investedAmount: "", currentValue: "", note: "" });
   };
 
   const addEntry = (event) => {
@@ -273,6 +309,36 @@ function App() {
       </section>
 
       <section className="card">
+        <div className="section-title"><h2>Existing Assets / Starting Balance</h2></div>
+        <p className="hint">Use this for money or investments you already had before monthly tracking. For Robinhood, enter your total amount invested and today's current portfolio value. Only current value counts toward goal progress.</p>
+        <form className="form-grid" onSubmit={addExistingAsset}>
+          <label>Asset / Account<input value={assetDraft.name} onChange={(e)=>setAssetDraft({...assetDraft,name:e.target.value})} placeholder="Robinhood, Bank savings, Mutual funds"/></label>
+          <label>Goal<select value={assetDraft.goalId} onChange={(e)=>setAssetDraft({...assetDraft,goalId:e.target.value})}><option value="">Select goal</option>{plan.goals.map((goal)=><option key={goal.id} value={goal.id}>{goal.name}</option>)}</select></label>
+          <label>Currency<select value={assetDraft.currency} onChange={(e)=>setAssetDraft({...assetDraft,currency:e.target.value})}><option>INR</option><option>USD</option></select></label>
+          <label>Amount invested / contributed<input type="number" value={assetDraft.investedAmount} onChange={(e)=>setAssetDraft({...assetDraft,investedAmount:e.target.value})}/></label>
+          <label>Current value<input type="number" value={assetDraft.currentValue} onChange={(e)=>setAssetDraft({...assetDraft,currentValue:e.target.value})} required/></label>
+          <label>Note<input value={assetDraft.note} onChange={(e)=>setAssetDraft({...assetDraft,note:e.target.value})} placeholder="Existing balance at plan start"/></label>
+          <button className="primary span2" type="submit">Add existing asset</button>
+        </form>
+        {existingAssets.length > 0 && <div className="table-wrap"><table><thead><tr><th>Asset</th><th>Goal</th><th>Invested</th><th>Current value</th><th>INR value</th><th>Gain/Loss</th><th></th></tr></thead><tbody>
+          {existingAssets.map((asset)=>{
+            const goal=plan.goals.find((g)=>g.id===asset.goalId);
+            const symbol=asset.currency==="USD"?"$":"₹";
+            const inr=asset.currency==="USD"?asset.currentValue*plan.usdInr:asset.currentValue;
+            const gain=Number(asset.currentValue||0)-Number(asset.investedAmount||0);
+            return <tr key={asset.id}>
+              <td>{asset.name}</td><td>{goal?.name||"Deleted goal"}</td>
+              <td>{symbol}{Number(asset.investedAmount||0).toLocaleString()}</td>
+              <td>{symbol}{Number(asset.currentValue||0).toLocaleString()}</td>
+              <td>{formatINR(inr)}</td>
+              <td>{symbol}{gain.toLocaleString()}</td>
+              <td><button className="icon-btn" onClick={()=>persist({...plan,existingAssets:existingAssets.filter((x)=>x.id!==asset.id)})}><Trash2 size={15}/></button></td>
+            </tr>;
+          })}
+        </tbody></table></div>}
+      </section>
+
+      <section className="card">
         <div className="section-title"><h2>Goals</h2><button className="primary small" onClick={addGoal}><Plus size={16}/> Add goal</button></div>
         <div className="goal-list">
           {plan.goals.map((goal) => {
@@ -316,7 +382,7 @@ function App() {
         )}
       </section>
 
-      <footer>All data stays in this browser on your laptop. Use Backup periodically.</footer>
+      <footer>Financial data is saved locally to data/financial-data.json, with browser storage as a fallback. Use Backup periodically.</footer>
     </div>
   );
 }
