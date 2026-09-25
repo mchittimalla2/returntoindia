@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { Plus, Trash2, Download, Upload, Target, CalendarDays, TrendingUp, WalletCards } from "lucide-react";
 import "./styles.css";
@@ -48,6 +48,8 @@ function monthDiff(fromStr, toDate) {
 
 function App() {
   const [plan, setPlan] = useState(loadPlan);
+  const [saveStatus, setSaveStatus] = useState("Loading local file...");
+  const loadedRef = useRef(false);
   const [draft, setDraft] = useState({
     month: new Date().toISOString().slice(0, 7),
     goalId: "",
@@ -57,9 +59,44 @@ function App() {
     note: ""
   });
 
+  useEffect(() => {
+    async function loadLocalFile() {
+      try {
+        const response = await fetch("/api/data");
+        if (!response.ok) throw new Error("Could not read local JSON file");
+        const result = await response.json();
+        if (result.data && Array.isArray(result.data.goals)) {
+          setPlan(result.data);
+          localStorage.setItem(STORAGE_KEY, JSON.stringify(result.data));
+          setSaveStatus("Loaded from data/financial-data.json");
+        } else {
+          setSaveStatus("Ready — first change will create the local JSON file");
+        }
+      } catch (error) {
+        setSaveStatus("Local file service unavailable — browser fallback active");
+      } finally {
+        loadedRef.current = true;
+      }
+    }
+    loadLocalFile();
+  }, []);
+
   const persist = (next) => {
     setPlan(next);
     localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
+    if (!loadedRef.current) return;
+    setSaveStatus("Saving...");
+    fetch("/api/data", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(next)
+    })
+      .then((response) => {
+        if (!response.ok) throw new Error("Save failed");
+        return response.json();
+      })
+      .then(() => setSaveStatus("Saved to data/financial-data.json"))
+      .catch(() => setSaveStatus("JSON save failed — browser fallback still saved"));
   };
 
   const totalTarget = useMemo(
@@ -181,6 +218,7 @@ function App() {
         <div>
           <h1>Return to India Financial Tracker</h1>
           <p>Track real progress and let the target date move with your actual savings.</p>
+          <p className="save-status">{saveStatus}</p>
         </div>
         <div className="header-actions">
           <button className="secondary" onClick={exportData}><Download size={16}/> Backup</button>
