@@ -1,0 +1,5 @@
+node_modules/
+dist/
+data/financial-data.json
+backups/*.json
+*.tmp
