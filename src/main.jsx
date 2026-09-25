@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
-import { Plus, Trash2, Download, Upload, Target, CalendarDays, TrendingUp, WalletCards } from "lucide-react";
+import { Plus, Trash2, Download, Upload, Target, CalendarDays, TrendingUp, WalletCards, Pencil, Save, X } from "lucide-react";
 import "./styles.css";
 
 const STORAGE_KEY = "returnToIndiaPlanV1";
@@ -50,6 +50,7 @@ function monthDiff(fromStr, toDate) {
 function App() {
   const [plan, setPlan] = useState(loadPlan);
   const [saveStatus, setSaveStatus] = useState("Loading local file...");
+  const [editingAssetId, setEditingAssetId] = useState(null);
   const [assetDraft, setAssetDraft] = useState({
     name: "Robinhood",
     goalId: "",
@@ -200,22 +201,52 @@ function App() {
     });
   };
 
-  const addExistingAsset = (event) => {
+  const resetAssetDraft = () => {
+    setEditingAssetId(null);
+    setAssetDraft({ name: "Robinhood", goalId: "", currency: "USD", investedAmount: "", currentValue: "", note: "" });
+  };
+
+  const saveExistingAsset = (event) => {
     event.preventDefault();
-    if (!assetDraft.goalId || !assetDraft.currentValue || Number(assetDraft.currentValue) < 0) return;
-    persist({
-      ...plan,
-      existingAssets: [
-        ...existingAssets,
-        {
-          ...assetDraft,
-          id: crypto.randomUUID(),
-          investedAmount: Number(assetDraft.investedAmount || 0),
-          currentValue: Number(assetDraft.currentValue)
-        }
-      ]
+    if (!assetDraft.goalId || assetDraft.currentValue === "" || Number(assetDraft.currentValue) < 0) return;
+    const normalized = {
+      ...assetDraft,
+      investedAmount: Number(assetDraft.investedAmount || 0),
+      currentValue: Number(assetDraft.currentValue)
+    };
+    const nextAssets = editingAssetId
+      ? existingAssets.map((asset) => asset.id === editingAssetId ? { ...asset, ...normalized } : asset)
+      : [...existingAssets, { ...normalized, id: crypto.randomUUID() }];
+    persist({ ...plan, existingAssets: nextAssets });
+    resetAssetDraft();
+  };
+
+  const editExistingAsset = (asset) => {
+    setEditingAssetId(asset.id);
+    setAssetDraft({
+      name: asset.name || "",
+      goalId: asset.goalId || "",
+      currency: asset.currency || "INR",
+      investedAmount: asset.investedAmount ?? "",
+      currentValue: asset.currentValue ?? "",
+      note: asset.note || ""
     });
-    setAssetDraft({ ...assetDraft, investedAmount: "", currentValue: "", note: "" });
+  };
+
+  const saveAllData = () => {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(plan));
+    setSaveStatus("Saving all data...");
+    fetch("/api/data", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(plan)
+    })
+      .then((response) => {
+        if (!response.ok) throw new Error("Save failed");
+        return response.json();
+      })
+      .then(() => setSaveStatus("All data saved to data/financial-data.json"))
+      .catch(() => setSaveStatus("JSON save failed — browser fallback still saved"));
   };
 
   const addEntry = (event) => {
@@ -257,6 +288,7 @@ function App() {
           <p className="save-status">{saveStatus}</p>
         </div>
         <div className="header-actions">
+          <button className="primary" onClick={saveAllData}><Save size={16}/> Save All Data</button>
           <button className="secondary" onClick={exportData}><Download size={16}/> Backup</button>
           <label className="secondary file-btn">
             <Upload size={16}/> Restore
@@ -311,14 +343,15 @@ function App() {
       <section className="card">
         <div className="section-title"><h2>Existing Assets / Starting Balance</h2></div>
         <p className="hint">Use this for money or investments you already had before monthly tracking. For Robinhood, enter your total amount invested and today's current portfolio value. Only current value counts toward goal progress.</p>
-        <form className="form-grid" onSubmit={addExistingAsset}>
+        <form className="form-grid" onSubmit={saveExistingAsset}>
           <label>Asset / Account<input value={assetDraft.name} onChange={(e)=>setAssetDraft({...assetDraft,name:e.target.value})} placeholder="Robinhood, Bank savings, Mutual funds"/></label>
           <label>Goal<select value={assetDraft.goalId} onChange={(e)=>setAssetDraft({...assetDraft,goalId:e.target.value})}><option value="">Select goal</option>{plan.goals.map((goal)=><option key={goal.id} value={goal.id}>{goal.name}</option>)}</select></label>
           <label>Currency<select value={assetDraft.currency} onChange={(e)=>setAssetDraft({...assetDraft,currency:e.target.value})}><option>INR</option><option>USD</option></select></label>
           <label>Amount invested / contributed<input type="number" value={assetDraft.investedAmount} onChange={(e)=>setAssetDraft({...assetDraft,investedAmount:e.target.value})}/></label>
           <label>Current value<input type="number" value={assetDraft.currentValue} onChange={(e)=>setAssetDraft({...assetDraft,currentValue:e.target.value})} required/></label>
           <label>Note<input value={assetDraft.note} onChange={(e)=>setAssetDraft({...assetDraft,note:e.target.value})} placeholder="Existing balance at plan start"/></label>
-          <button className="primary span2" type="submit">Add existing asset</button>
+          <button className="primary span2" type="submit">{editingAssetId ? "Update asset" : "Add existing asset"}</button>
+          {editingAssetId && <button className="secondary span2" type="button" onClick={resetAssetDraft}><X size={16}/> Cancel edit</button>}
         </form>
         {existingAssets.length > 0 && <div className="table-wrap"><table><thead><tr><th>Asset</th><th>Goal</th><th>Invested</th><th>Current value</th><th>INR value</th><th>Gain/Loss</th><th></th></tr></thead><tbody>
           {existingAssets.map((asset)=>{
@@ -332,7 +365,10 @@ function App() {
               <td>{symbol}{Number(asset.currentValue||0).toLocaleString()}</td>
               <td>{formatINR(inr)}</td>
               <td>{symbol}{gain.toLocaleString()}</td>
-              <td><button className="icon-btn" onClick={()=>persist({...plan,existingAssets:existingAssets.filter((x)=>x.id!==asset.id)})}><Trash2 size={15}/></button></td>
+              <td>
+                <button className="icon-btn" title="Edit asset" onClick={()=>editExistingAsset(asset)}><Pencil size={15}/></button>
+                <button className="icon-btn" title="Delete asset" onClick={()=>persist({...plan,existingAssets:existingAssets.filter((x)=>x.id!==asset.id)})}><Trash2 size={15}/></button>
+              </td>
             </tr>;
           })}
         </tbody></table></div>}
