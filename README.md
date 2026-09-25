@@ -1,20 +1,30 @@
 # Return to India Financial Tracker
 
-A local-only React/Vite application that tracks financial goals and dynamically recalculates your projected completion date.
+A private, local-first financial goal tracker. The UI runs in React/Vite and a tiny local Node/Express service automatically saves the full plan to a JSON file on your laptop.
 
-## Current features
+## Automatic storage
 
-- Add, edit, and delete financial goals
-- Track monthly cash savings, home-loan principal payments, investments, and other progress
-- Enter values in INR or USD
-- Editable USD/INR conversion rate
-- Original target date vs current projected date
-- Projected date automatically moves based on your actual average monthly progress
-- Editable planning return assumption
-- Local browser storage only — no database and no cloud backend
-- JSON backup and restore
+Every application change is saved automatically to:
+
+```
+data/financial-data.json
+```
+
+This includes adding/deleting transactions, changing goals, changing targets, exchange rate, planning assumptions, and settings.
+
+Before replacing the current file, the local service writes the previous version into:
+
+```
+backups/
+```
+
+Personal JSON files are excluded from Git by `.gitignore`, so your financial data is not pushed to GitHub.
+
+Browser localStorage is retained only as a fallback.
 
 ## Run locally
+
+After pulling a new version:
 
 ```bash
 git pull
@@ -22,16 +32,18 @@ npm install
 npm run dev
 ```
 
-Then open the localhost URL shown by Vite, usually:
+One command starts both the local JSON service and Vite. Open the localhost URL shown by Vite, normally:
 
 ```
 http://localhost:5173
 ```
 
-## Data storage
+The terminal will also show the exact path of your local financial-data.json file.
 
-Your entries are stored in browser localStorage on your laptop. Use the **Backup** button periodically to save a JSON copy.
+## Manual backup
+
+The application's Backup button still downloads a portable JSON copy. Restore can import one into the app; after import it is also written to the local data file.
 
 ## Important
 
-The investment-return percentage is a planning assumption, not a guaranteed return.
+Investment-return percentages and projected completion dates are planning estimates, not guaranteed returns or outcomes.
