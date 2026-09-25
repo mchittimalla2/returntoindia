@@ -377,11 +377,12 @@ function App() {
       <section className="card">
         <div className="section-title"><h2>Goals</h2><button className="primary small" onClick={addGoal}><Plus size={16}/> Add goal</button></div>
         <div className="goal-list">
-          {plan.goals.map((goal) => {
+          {plan.goals.map((goal, index) => {
             const achieved = achievedByGoal[goal.id] || 0;
+            const goalTheme = ["goal-blue","goal-green","goal-purple","goal-orange","goal-gold","goal-teal"][index % 6];
             const pct = goal.target > 0 ? Math.min(100, achieved / goal.target * 100) : 0;
             return (
-              <div className="goal-row" key={goal.id}>
+              <div className={"goal-row " + goalTheme} key={goal.id}>
                 <div className="goal-inputs">
                   <input value={goal.name} onChange={(e)=>updateGoal(goal.id,{name:e.target.value})}/>
                   <input type="number" value={goal.target} onChange={(e)=>updateGoal(goal.id,{target:Number(e.target.value)})}/>
